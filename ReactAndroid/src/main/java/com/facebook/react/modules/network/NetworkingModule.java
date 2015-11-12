@@ -14,6 +14,10 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
 
+import java.net.CookieManager;
+import java.net.CookiePolicy;
+
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.GuardedAsyncTask;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -21,7 +25,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
-import com.facebook.react.modules.network.OkHttpClientProvider;
+import com.facebook.react.bridge.WritableMap;
 
 import com.squareup.okhttp.Headers;
 import com.squareup.okhttp.MediaType;
@@ -44,6 +48,7 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
   private static final String USER_AGENT_HEADER_NAME = "user-agent";
 
   private final OkHttpClient mClient;
+  private final CookieManager mCookieManager;
   private final @Nullable String mDefaultUserAgent;
   private boolean mShuttingDown;
 
@@ -55,6 +60,8 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
     mClient = client;
     mShuttingDown = false;
     mDefaultUserAgent = defaultUserAgent;
+    mCookieManager = new CookieManager();
+    mClient.setCookieHandler(mCookieManager);
   }
 
   /**
@@ -71,6 +78,10 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
    */
   public NetworkingModule(ReactApplicationContext reactContext, String defaultUserAgent) {
     this(reactContext, defaultUserAgent, OkHttpClientProvider.getOkHttpClient());
+  }
+
+  public NetworkingModule(ReactApplicationContext reactContext, OkHttpClient client) {
+    this(reactContext, null, client);
   }
 
   @Override
@@ -180,7 +191,6 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
             if (mShuttingDown) {
               return;
             }
-            // TODO(5472580) handle headers properly
             String responseBody;
             try {
               responseBody = response.body().string();
@@ -189,7 +199,22 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
               callback.invoke(0, null, e.getMessage());
               return;
             }
-            callback.invoke(response.code(), null, responseBody);
+
+            WritableMap responseHeaders = Arguments.createMap();
+            Headers headers = response.headers();
+            for (int i = 0; i < headers.size(); i++) {
+              String headerName = headers.name(i);
+              // multiple values for the same header
+              if (responseHeaders.hasKey(headerName)) {
+                responseHeaders.putString(
+                  headerName,
+                  responseHeaders.getString(headerName) + ", " + headers.value(i));
+              } else {
+                responseHeaders.putString(headerName, headers.value(i));
+              }
+            }
+
+            callback.invoke(response.code(), responseHeaders, responseBody);
           }
         });
   }
