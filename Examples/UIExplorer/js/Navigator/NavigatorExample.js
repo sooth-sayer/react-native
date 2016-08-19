@@ -73,6 +73,15 @@ class NavMenu extends React.Component {
         />
         <NavButton
           onPress={() => {
+            this.props.navigator.push({
+              message: 'Fade Android example',
+              sceneConfig: Navigator.SceneConfigs.FadeAndroid,
+            });
+          }}
+          text="Fade android"
+        />
+        <NavButton
+          onPress={() => {
             this.props.navigator.pop();
           }}
           text="Pop"
