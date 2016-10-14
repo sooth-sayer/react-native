@@ -382,14 +382,9 @@ static UIImage *RCTResizeImageIfNeeded(UIImage *image,
   });
 
   return ^{
-    typeof(self) strongSelf = weakSelf;
-    if (strongSelf && !cancelled) {
-      dispatch_async(strongSelf->_URLRequestQueue, ^{
-        if (cancelLoad) {
-          cancelLoad();
-          cancelLoad = nil;
-        }
-      });
+    if (cancelLoad && !cancelled) {
+      cancelLoad();
+      cancelLoad = nil;
     }
     OSAtomicOr32Barrier(1, &cancelled);
   };
@@ -449,7 +444,9 @@ static UIImage *RCTResizeImageIfNeeded(UIImage *image,
 
   // Download image
   __weak __typeof(self) weakSelf = self;
-  RCTNetworkTask *task = [networking networkTaskWithRequest:request completionBlock:^(NSURLResponse *response, NSData *data, NSError *error) {
+  __block RCTNetworkTask *task =
+  [networking networkTaskWithRequest:request
+                     completionBlock:^(NSURLResponse *response, NSData *data, NSError *error) {
     __typeof(self) strongSelf = weakSelf;
     if (!strongSelf) {
       return;
@@ -493,8 +490,15 @@ static UIImage *RCTResizeImageIfNeeded(UIImage *image,
   }
 
   return ^{
-    [task cancel];
-    [weakSelf dequeueTasks];
+    __typeof(self) strongSelf = weakSelf;
+    if (!strongSelf || !task) {
+      return;
+    }
+    dispatch_async(strongSelf->_URLRequestQueue, ^{
+      [task cancel];
+      task = nil;
+    });
+    [strongSelf dequeueTasks];
   };
 }
 
@@ -510,7 +514,7 @@ static UIImage *RCTResizeImageIfNeeded(UIImage *image,
   __block volatile uint32_t cancelled = 0;
   __block dispatch_block_t cancelLoad = nil;
   dispatch_block_t cancellationBlock = ^{
-    if (cancelLoad) {
+    if (cancelLoad && !cancelled) {
       cancelLoad();
     }
     OSAtomicOr32Barrier(1, &cancelled);
